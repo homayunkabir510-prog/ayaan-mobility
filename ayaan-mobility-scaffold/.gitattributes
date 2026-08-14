@@ -1,0 +1,11 @@
+# Normalize line endings to LF in the repo, checked out as native per-OS.
+* text=auto eol=lf
+
+# Never diff/merge binary files as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
