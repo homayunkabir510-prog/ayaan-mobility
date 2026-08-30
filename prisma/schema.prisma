@@ -2,6 +2,18 @@
 // AYAAN MOBILITY - MASTER DATABASE SCHEMA
 // Provider: PostgreSQL
 // ORM: Prisma ORM
+//
+// Schema-fix pass (this revision) resolves the 6 issues
+// flagged by Ace/Fable review after Step 1/2:
+//   1. Money fields: Float -> Decimal(12,2) (avoid float rounding drift)
+//   2. DutyLog.agreementId FK added (traceability to the exact
+//      agreement/rate version in effect at time of duty)
+//   3. User.companyId added for CLIENT_USER tenant isolation
+//   4. Invoice: @@unique([companyId, month, year]) added
+//   5. DutyLog.idempotencyKey added for Ayaan Go offline retry safety
+//   6. isFriday()/holiday-detection timezone (Asia/Dhaka) fix is an
+//      application-code concern (Step 3 server action), not a schema
+//      change -- no field added here for it, noted for Step 3.
 // ==========================================
 
 datasource db {
@@ -96,6 +108,13 @@ model User {
   role          Role      @default(DRIVER)
   isActive      Boolean   @default(true)
   language      LanguagePreference @default(BANGLA)
+
+  // --- Fix #3: tenant isolation for CLIENT_USER ---
+  // Nullable because only CLIENT_USER rows need it; app layer must
+  // enforce that every CLIENT_USER row has this set on creation.
+  companyId     String?
+  company       Company?  @relation(fields: [companyId], references: [id])
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -108,6 +127,7 @@ model User {
   createdLogs   DutyLog[] @relation("ApprovedByAdmin")
 
   @@index([phone, email, role])
+  @@index([companyId])
 }
 
 model CarOwnerProfile {
@@ -136,7 +156,7 @@ model DriverProfile {
   nidNumber       String?
 
   // Driver Wallet & Current State
-  walletBalance   Float    @default(0.0)
+  walletBalance   Decimal  @default(0) @db.Decimal(12, 2)
   assignedVehicle Vehicle? @relation("CurrentDriver")
   dutyLogs        DutyLog[]
   expenseClaims   ExpenseClaim[]
@@ -156,6 +176,9 @@ model Company {
   agreements    Agreement[]
   dutyLogs      DutyLog[]
   invoices      Invoice[]
+
+  // --- Fix #3: back-relation for tenant-scoped client users ---
+  clientUsers   User[]
 
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -209,33 +232,36 @@ model Agreement {
   rentalType            RentalType  @default(MONTHLY_CORPORATE)
 
   // Pricing & Rent Rules
-  baseRent              Float       // Monthly or Daily Rent BDT
-  monthlyFuelQuotaLiters Float     @default(0.0) // e.g. 20L or 30L Free
+  baseRent              Decimal     @db.Decimal(12, 2) // Monthly or Daily Rent BDT
+  monthlyFuelQuotaLiters Float      @default(0.0) // e.g. 20L or 30L Free (volume, not currency)
 
   // Dynamic Per KM Fuel Rates (BDT)
-  cngRatePerKm          Float       @default(10.0)
-  lpgRatePerKm          Float       @default(10.0)
-  octaneRatePerKm       Float       @default(15.0)
+  cngRatePerKm          Decimal     @default(10.0) @db.Decimal(12, 2)
+  lpgRatePerKm          Decimal     @default(10.0) @db.Decimal(12, 2)
+  octaneRatePerKm       Decimal     @default(15.0) @db.Decimal(12, 2)
 
   // Duty & Overtime Rules
   standardDutyHours     Int         @default(10) // e.g. 10 Hours
-  overtimeRatePerHour   Float       @default(100.0)
+  overtimeRatePerHour   Decimal     @default(100.0) @db.Decimal(12, 2)
   fridayHolidayOvertime Boolean     @default(true)
 
   // Allowances Rules (BDT)
-  lunchAllowance        Float       @default(200.0)
-  dinnerAllowance       Float       @default(150.0)
-  tourAllowancePerDay   Float       @default(1200.0) // Outside Dhaka
+  lunchAllowance        Decimal     @default(200.0) @db.Decimal(12, 2)
+  dinnerAllowance       Decimal     @default(150.0) @db.Decimal(12, 2)
+  tourAllowancePerDay   Decimal     @default(1200.0) @db.Decimal(12, 2) // Outside Dhaka
 
   // Feature Toggles (Admin Configurable)
   allowTollParkingClaim Boolean     @default(true)
 
-  // Owner Revenue Sharing / Commission
-  ownerCommissionTierPct Float      @default(10.0) // 1% to 25%
+  // Owner Revenue Sharing / Commission (percentage, not currency)
+  ownerCommissionTierPct Decimal    @default(10.0) @db.Decimal(5, 2) // 1% to 25%
 
   startDate             DateTime
   endDate               DateTime?
   isActive              Boolean     @default(true)
+
+  // --- Fix #2: back-relation so DutyLog can pin the exact agreement used ---
+  dutyLogs              DutyLog[]
 
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
@@ -257,6 +283,15 @@ model DutyLog {
   companyId            String
   company              Company      @relation(fields: [companyId], references: [id])
 
+  // --- Fix #2: pin the exact agreement/rate version this duty was billed under ---
+  agreementId          String
+  agreement            Agreement    @relation(fields: [agreementId], references: [id])
+
+  // --- Fix #5: idempotency for Ayaan Go offline submission retries ---
+  // Client (PWA) generates this once per duty-close attempt; unique
+  // constraint means a retried sync can never create a duplicate log.
+  idempotencyKey       String?      @unique
+
   // Duty Start (Odometer & Location)
   startTime            DateTime
   startOdometer        Float
@@ -275,14 +310,14 @@ model DutyLog {
   dutyHours            Float        @default(0.0)
   overtimeHours        Float        @default(0.0)
 
-  fuelBill             Float        @default(0.0)
-  overtimeBill         Float        @default(0.0)
-  lunchBill            Float        @default(0.0)
-  dinnerBill           Float        @default(0.0)
-  tourAllowance        Float        @default(0.0)
-  tollParkingBill      Float        @default(0.0)
+  fuelBill             Decimal      @default(0) @db.Decimal(12, 2)
+  overtimeBill         Decimal      @default(0) @db.Decimal(12, 2)
+  lunchBill            Decimal      @default(0) @db.Decimal(12, 2)
+  dinnerBill           Decimal      @default(0) @db.Decimal(12, 2)
+  tourAllowance        Decimal      @default(0) @db.Decimal(12, 2)
+  tollParkingBill      Decimal      @default(0) @db.Decimal(12, 2)
 
-  totalDailyBill       Float        @default(0.0)
+  totalDailyBill       Decimal      @default(0) @db.Decimal(12, 2)
 
   // Flags
   isHoliday            Boolean      @default(false)
@@ -300,6 +335,7 @@ model DutyLog {
   updatedAt            DateTime     @updatedAt
 
   @@index([driverId, date, companyId])
+  @@index([agreementId])
 }
 
 // ------------------------------------------
@@ -314,7 +350,7 @@ model ExpenseClaim {
   driver       DriverProfile @relation(fields: [driverId], references: [id])
 
   expenseType  String      // "TOLL", "PARKING", "OTHER"
-  amount       Float
+  amount       Decimal     @db.Decimal(12, 2)
   receiptImg   String      // Digital receipt photo
   status       ClaimStatus @default(PENDING)
 
@@ -330,7 +366,7 @@ model MaintenanceLog {
   vehicleId    String
   vehicle      Vehicle  @relation(fields: [vehicleId], references: [id])
   serviceType  String   // "ENGINE_OIL", "TYRE", "REPAIR", "FITNESS_WORK"
-  cost         Float
+  cost         Decimal  @db.Decimal(12, 2)
   servicedBy   String   // "CAR_OWNER" or "AYAAN_MOBILITY"
   receiptUrl   String?
   description  String?
@@ -352,18 +388,21 @@ model Invoice {
   month          Int       // 1 - 12
   year           Int       // e.g. 2026
 
-  baseRentTotal  Float
-  fuelTotal      Float
-  overtimeTotal  Float
-  allowanceTotal Float
-  tollTotal      Float
-  grandTotal     Float
+  baseRentTotal  Decimal   @db.Decimal(12, 2)
+  fuelTotal      Decimal   @db.Decimal(12, 2)
+  overtimeTotal  Decimal   @db.Decimal(12, 2)
+  allowanceTotal Decimal   @db.Decimal(12, 2)
+  tollTotal      Decimal   @db.Decimal(12, 2)
+  grandTotal     Decimal   @db.Decimal(12, 2)
 
   isPaid         Boolean   @default(false)
   pdfUrl         String?   // Generated PDF Link
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  // --- Fix #4: prevent duplicate invoices for the same company/month/year ---
+  @@unique([companyId, month, year])
 }
 
 model OwnerPayout {
@@ -373,10 +412,10 @@ model OwnerPayout {
   month          Int
   year           Int
 
-  totalGrossEarn Float
-  commissionDeducted Float     // Based on Commission Tier %
-  maintenanceDeducted Float    @default(0.0)
-  netPayoutAmount Float
+  totalGrossEarn      Decimal    @db.Decimal(12, 2)
+  commissionDeducted  Decimal    @db.Decimal(12, 2) // Based on Commission Tier %
+  maintenanceDeducted Decimal    @default(0) @db.Decimal(12, 2)
+  netPayoutAmount     Decimal    @db.Decimal(12, 2)
 
   isSettled      Boolean         @default(false)
   transactionRef String?
