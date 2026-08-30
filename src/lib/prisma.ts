@@ -1,0 +1,20 @@
+// ==========================================
+// PRISMA CLIENT SINGLETON
+// Used by server actions and API routes
+// ==========================================
+
+import { PrismaClient } from "@prisma/client";
+
+let prisma: PrismaClient;
+
+if (process.env.NODE_ENV === "production") {
+  prisma = new PrismaClient();
+} else {
+  // In development, reuse the client to avoid exhausting connections
+  if (!(global as unknown as { prisma: PrismaClient }).prisma) {
+    (global as unknown as { prisma: PrismaClient }).prisma = new PrismaClient();
+  }
+  prisma = (global as unknown as { prisma: PrismaClient }).prisma;
+}
+
+export { prisma };
