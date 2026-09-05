@@ -9,7 +9,7 @@ import Card, { CardContent, CardHeader, CardFooter } from "@/components/shared/C
 import Badge from "@/components/shared/Badge";
 import { useDutyLogMutation } from "@/hooks/useDutyLogMutation";
 import { formatCurrency } from "@/lib/formatter";
-import type { SubmitDutyLogInput } from "@/actions/dutyLog";
+import type { EndDutyInput } from "@/lib/actions/duty-log";
 import { Camera, AlertCircle } from "lucide-react";
 
 export interface DutyEndFormProps {
@@ -41,9 +41,9 @@ const DutyEndForm = ({ dutyLogId, startOdometer, startTime, driverName }: DutyEn
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-        // In production, upload to Cloudinary/S3
-        setFormData({ ...formData, endOdometerImg: file.name });
+        const dataUrl = reader.result as string;
+        setPhotoPreview(dataUrl);
+        setFormData((prev) => ({ ...prev, endOdometerImg: dataUrl }));
       };
       reader.readAsDataURL(file);
     }
@@ -51,13 +51,13 @@ const DutyEndForm = ({ dutyLogId, startOdometer, startTime, driverName }: DutyEn
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const input: SubmitDutyLogInput = {
+    const input: EndDutyInput = {
       dutyLogId,
       endTime: new Date(formData.endTime),
       endOdometer: parseFloat(formData.endOdometer.toString()),
       endOdometerImg: formData.endOdometerImg,
       endLocation: formData.endLocation || undefined,
-      routeNotes: formData.routeNotes || undefined,
+      routeNotes: formData.routeNotes,
       lunchClaimed: formData.lunchClaimed,
       isHoliday: formData.isHoliday,
       isOutsideDhakaTour: formData.isOutsideDhakaTour,
@@ -201,11 +201,12 @@ const DutyEndForm = ({ dutyLogId, startOdometer, startTime, driverName }: DutyEn
 
           {/* Route Notes */}
           <TextArea
-            label="Route Notes"
+            label="Route Notes *"
             placeholder="Describe your route, number of stops, traffic conditions, etc."
             value={formData.routeNotes}
             onChange={(e) => setFormData({ ...formData, routeNotes: e.target.value })}
             rows={3}
+            required
           />
 
           {/* Checkboxes */}

@@ -85,20 +85,33 @@ export async function startDutyAction(
 
 const endDutySchema = z.object({
   dutyLogId: z.string().uuid(),
+  // Client-supplied, not server `new Date()` -- Ayaan Go is offline-first,
+  // so the moment this action actually runs on the server can be minutes
+  // or hours after the driver actually pressed "End Duty" underground or
+  // out of signal. Validated against startTime below.
+  endTime: z.coerce.date(),
   endOdometer: z.number().nonnegative(),
   endOdometerImg: z.string().url(),
   endLocation: z.string().optional(),
   routeNotes: z.string().min(1, "Please note where the car traveled."),
   lunchClaimed: z.boolean().default(false),
   isOutsideDhakaTour: z.boolean().default(false),
-  /** Manual override for government holidays; Friday is auto-detected. */
-  isGovernmentHoliday: z.boolean().default(false),
+  /** Manual override for Friday/government holidays, as ticked by the driver. Combined with automatic Friday detection below. */
+  isHoliday: z.boolean().default(false),
 });
 export type EndDutyInput = z.infer<typeof endDutySchema>;
 
+export interface DutyCalculationResult {
+  totalKm: number;
+  dutyHours: number;
+  totalDailyBill: number;
+  status: "APPROVED" | "PENDING_APPROVAL" | "EDITED_BY_ADMIN";
+  warnings: string[];
+}
+
 export async function endDutyAction(
   rawInput: EndDutyInput
-): Promise<ActionResult<{ totalDailyBill: number; warnings: string[] }>> {
+): Promise<ActionResult<DutyCalculationResult>> {
   const auth = await requireRoleForAction(["DRIVER"]);
   if ("error" in auth) return fail(auth.error);
   const driverProfileId = auth.user.driverProfileId;
@@ -118,10 +131,13 @@ export async function endDutyAction(
   if (dutyLog.endTime) {
     return fail("This duty has already been closed out.");
   }
+  if (input.endTime.getTime() < dutyLog.startTime.getTime()) {
+    return fail("End time can't be before start time.");
+  }
 
-  const endTime = new Date();
+  const endTime = input.endTime;
   const isHoliday = isDhakaFriday(dutyLog.startTime) || isDhakaHoliday(dutyLog.startTime, []) ||
-    input.isGovernmentHoliday;
+    input.isHoliday;
 
   const agreementInput: AgreementCalcInput = {
     standardDutyHours: dutyLog.agreement.standardDutyHours,
@@ -184,7 +200,13 @@ export async function endDutyAction(
     },
   });
 
-  return ok({ totalDailyBill: result.totalDailyBill, warnings: result.warnings });
+  return ok({
+    totalKm: result.totalKm,
+    dutyHours: result.dutyHours,
+    totalDailyBill: result.totalDailyBill,
+    status,
+    warnings: result.warnings,
+  });
 }
 
 // ------------------------------------------
@@ -201,7 +223,7 @@ export type AdminOverrideInput = z.infer<typeof adminOverrideSchema>;
 
 export async function adminOverrideDutyLogAction(
   rawInput: AdminOverrideInput
-): Promise<ActionResult<{ totalDailyBill: number }>> {
+): Promise<ActionResult<DutyCalculationResult>> {
   const auth = await requireRoleForAction(["SUPER_ADMIN", "OPERATIONS_ADMIN", "ACCOUNTS_ADMIN"]);
   if ("error" in auth) return fail(auth.error);
 
@@ -285,7 +307,13 @@ export async function adminOverrideDutyLogAction(
     },
   });
 
-  return ok({ totalDailyBill: result.totalDailyBill });
+  return ok({
+    totalKm: result.totalKm,
+    dutyHours: result.dutyHours,
+    totalDailyBill: result.totalDailyBill,
+    status: "EDITED_BY_ADMIN",
+    warnings: result.warnings,
+  });
 }
 
 // ------------------------------------------

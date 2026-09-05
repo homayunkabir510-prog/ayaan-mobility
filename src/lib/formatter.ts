@@ -1,6 +1,12 @@
-// Format currency in BDT
-export function formatCurrency(value: number): string {
-  return `৳ ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+import type { Prisma } from "@prisma/client";
+
+// Format currency in BDT. Accepts a plain number (e.g. from a Server
+// Action's return value) or a Prisma Decimal (e.g. from a raw query result
+// passed straight into a component) so callers never have to remember to
+// convert first.
+export function formatCurrency(value: number | Prisma.Decimal): string {
+  const numericValue = typeof value === "number" ? value : value.toNumber();
+  return `৳ ${numericValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 
 // Format duration in hours and minutes
