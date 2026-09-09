@@ -12,6 +12,7 @@ import {
   type AgreementCalcInput,
 } from "@/lib/calculator";
 import type { DutyStatus, DutyLog } from "@prisma/client";
+import { decToNumber } from "@/lib/actions/shared";
 import {
   ActionError,
   requireRole,
@@ -80,11 +81,7 @@ export async function submitDutyLog(input: SubmitDutyLogInput): Promise<DutyLogR
         vehicle: true,
         company: {
           include: {
-            agreements: {
-              where: {
-                vehicleId: true, // This will be filtered in code
-              },
-            },
+            agreements: true,
           },
         },
       },
@@ -125,7 +122,10 @@ export async function submitDutyLog(input: SubmitDutyLogInput): Promise<DutyLogR
       },
     });
 
-    const approvedTollParkingTotal = expenseClaims.reduce((sum, claim) => sum + claim.amount, 0);
+    const approvedTollParkingTotal = expenseClaims.reduce(
+      (sum, claim) => sum + decToNumber(claim.amount),
+      0
+    );
 
     // Build calculator inputs
     const dutyCalcInput: DutyLogCalcInput = {
@@ -142,14 +142,14 @@ export async function submitDutyLog(input: SubmitDutyLogInput): Promise<DutyLogR
 
     const agreementInput: AgreementCalcInput = {
       standardDutyHours: agreement.standardDutyHours,
-      overtimeRatePerHour: agreement.overtimeRatePerHour,
+      overtimeRatePerHour: decToNumber(agreement.overtimeRatePerHour),
       fridayHolidayOvertime: agreement.fridayHolidayOvertime,
-      cngRatePerKm: agreement.cngRatePerKm,
-      lpgRatePerKm: agreement.lpgRatePerKm,
-      octaneRatePerKm: agreement.octaneRatePerKm,
-      lunchAllowance: agreement.lunchAllowance,
-      dinnerAllowance: agreement.dinnerAllowance,
-      tourAllowancePerDay: agreement.tourAllowancePerDay,
+      cngRatePerKm: decToNumber(agreement.cngRatePerKm),
+      lpgRatePerKm: decToNumber(agreement.lpgRatePerKm),
+      octaneRatePerKm: decToNumber(agreement.octaneRatePerKm),
+      lunchAllowance: decToNumber(agreement.lunchAllowance),
+      dinnerAllowance: decToNumber(agreement.dinnerAllowance),
+      tourAllowancePerDay: decToNumber(agreement.tourAllowancePerDay),
       allowTollParkingClaim: agreement.allowTollParkingClaim,
     };
 
@@ -297,41 +297,25 @@ export async function overrideDutyLog(input: AdminOverrideDutyLogInput): Promise
     const oldState = {
       totalKm: dutyLog.totalKm,
       overtimeHours: dutyLog.overtimeHours,
-      fuelBill: dutyLog.fuelBill,
-      overtimeBill: dutyLog.overtimeBill,
-      dinnerBill: dutyLog.dinnerBill,
-      tollParkingBill: dutyLog.tollParkingBill,
-      totalDailyBill: dutyLog.totalDailyBill,
+      fuelBill: decToNumber(dutyLog.fuelBill),
+      overtimeBill: decToNumber(dutyLog.overtimeBill),
+      dinnerBill: decToNumber(dutyLog.dinnerBill),
+      tollParkingBill: decToNumber(dutyLog.tollParkingBill),
+      totalDailyBill: decToNumber(dutyLog.totalDailyBill),
       status: dutyLog.status,
     };
 
-    // Calculate new totals if km or individual bills are overridden
-    let newTotalDailyBill = dutyLog.totalDailyBill;
-
-    if (input.newKm !== undefined) {
-      newTotalDailyBill -= oldState.fuelBill;
-      newTotalDailyBill += (input.newFuelBill ?? 0);
-    }
-
-    if (input.newOvertimeHours !== undefined) {
-      newTotalDailyBill -= oldState.overtimeBill;
-      newTotalDailyBill += (input.newOvertimeBill ?? 0);
-    }
-
-    if (input.newFuelBill !== undefined) {
-      newTotalDailyBill -= oldState.fuelBill;
-      newTotalDailyBill += input.newFuelBill;
-    }
-
-    if (input.newDinnerBill !== undefined) {
-      newTotalDailyBill -= oldState.dinnerBill;
-      newTotalDailyBill += input.newDinnerBill;
-    }
-
-    if (input.newTollParkingBill !== undefined) {
-      newTotalDailyBill -= oldState.tollParkingBill;
-      newTotalDailyBill += input.newTollParkingBill;
-    }
+    // Calculate the bill delta for each explicitly overridden bill field.
+    const newTotalDailyBill =
+      oldState.totalDailyBill
+      - oldState.fuelBill
+      + (input.newFuelBill ?? oldState.fuelBill)
+      - oldState.overtimeBill
+      + (input.newOvertimeBill ?? oldState.overtimeBill)
+      - oldState.dinnerBill
+      + (input.newDinnerBill ?? oldState.dinnerBill)
+      - oldState.tollParkingBill
+      + (input.newTollParkingBill ?? oldState.tollParkingBill);
 
     // Update duty log
     const updatedDutyLog = await prisma.dutyLog.update({
@@ -468,7 +452,7 @@ export async function fetchDutyLogDetails(dutyLogId: string): Promise<{
       where: { id: dutyLogId },
       include: {
         vehicle: { select: { fuelType: true } },
-        driver: { select: { name: true } },
+        driver: { select: { user: { select: { name: true } } } },
       },
     });
 
@@ -480,7 +464,10 @@ export async function fetchDutyLogDetails(dutyLogId: string): Promise<{
 
     return {
       success: true,
-      data: dutyLog,
+      data: {
+        ...dutyLog,
+        driver: { name: dutyLog.driver.user.name },
+      },
     };
   } catch (error) {
     const message = error instanceof ActionError ? error.message : "Failed to fetch duty log";

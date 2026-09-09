@@ -1,9 +1,8 @@
-import { ReactNode } from "react";
 import Card, { CardContent, CardHeader } from "@/components/shared/Card";
 import Badge from "@/components/shared/Badge";
 import { formatDate, formatCurrency, formatDuration } from "@/lib/formatter";
 import type { DutyLog } from "@prisma/client";
-import { Calendar, MapPin, Clock, Zap } from "lucide-react";
+import { MapPin, Clock, Zap } from "lucide-react";
 
 export interface DutyLogCardProps {
   dutyLog: DutyLog;
@@ -59,7 +58,7 @@ const DutyLogCard = ({ dutyLog, onClick }: DutyLogCardProps) => {
         <div className="border-t border-gray-200 pt-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-gray-600">Total Bill</p>
-            <p className="text-lg font-bold text-green-600">{formatCurrency(dutyLog.totalDailyBill)}</p>
+            <p className="text-lg font-bold text-green-600">{formatCurrency(Number(dutyLog.totalDailyBill))}</p>
           </div>
         </div>
       </CardContent>

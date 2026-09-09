@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Card, { CardContent, CardHeader, CardFooter } from "@/components/shared/Card";
+import Card, { CardContent, CardHeader } from "@/components/shared/Card";
 import Button from "@/components/shared/Button";
 import Input from "@/components/shared/Input";
-import Alert from "@/components/shared/Alert";
 import { formatCurrency } from "@/lib/formatter";
 import { Camera, Trash2 } from "lucide-react";
 
@@ -22,7 +21,7 @@ export interface ExpenseClaimFormProps {
   onSubmit?: (claims: ExpenseClaim[]) => void;
 }
 
-const ExpenseClaimForm = ({ dutyLogId, existingClaims = [], onSubmit }: ExpenseClaimFormProps) => {
+const ExpenseClaimForm = ({ existingClaims = [] }: ExpenseClaimFormProps) => {
   const [claims, setClaims] = useState<ExpenseClaim[]>(existingClaims);
   const [formData, setFormData] = useState({
     type: "TOLL" as "TOLL" | "PARKING" | "OTHER",
@@ -84,7 +83,12 @@ const ExpenseClaimForm = ({ dutyLogId, existingClaims = [], onSubmit }: ExpenseC
               <label className="text-sm font-medium text-gray-900 block mb-2">Expense Type</label>
               <select
                 value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                onChange={(e) => {
+                  const type = e.target.value;
+                  if (type === "TOLL" || type === "PARKING" || type === "OTHER") {
+                    setFormData({ ...formData, type });
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="TOLL">Toll</option>

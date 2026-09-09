@@ -1,4 +1,3 @@
-import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -23,7 +22,13 @@ const Input = ({ label, error, helperText, className, ...props }: InputProps) =>
   </div>
 );
 
-export const TextArea = ({ label, error, helperText, className, ...props }: InputProps & React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+export interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+  error?: string;
+  helperText?: string;
+}
+
+export const TextArea = ({ label, error, helperText, className, ...props }: TextAreaProps) => (
   <div className="flex flex-col gap-1">
     {label && <label className="text-sm font-medium text-gray-900">{label}</label>}
     <textarea
@@ -32,7 +37,7 @@ export const TextArea = ({ label, error, helperText, className, ...props }: Inpu
         error && "border-red-500 focus:ring-red-500",
         className
       )}
-      {...(props as any)}
+      {...props}
     />
     {error && <p className="text-sm text-red-600">{error}</p>}
     {helperText && !error && <p className="text-sm text-gray-500">{helperText}</p>}

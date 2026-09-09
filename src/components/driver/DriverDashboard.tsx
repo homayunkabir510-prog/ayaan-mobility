@@ -1,10 +1,10 @@
 "use client";
 
-import { formatCurrency, formatDate, formatDuration } from "@/lib/formatter";
+import { formatCurrency, formatDate } from "@/lib/formatter";
 import Button from "@/components/shared/Button";
 import Card, { CardContent, CardHeader } from "@/components/shared/Card";
 import Badge from "@/components/shared/Badge";
-import { LogOut, MapPin, Clock, Zap } from "lucide-react";
+import { LogOut, MapPin, Zap } from "lucide-react";
 
 export interface DriverDashboardProps {
   driverName: string;
@@ -101,7 +101,7 @@ const DriverDashboard = ({
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-gray-600">
                 <Zap className="h-4 w-4" />
-                <p className="text-xs">Today's Distance</p>
+                <p className="text-xs">Today&apos;s Distance</p>
               </div>
               <p className="text-2xl font-bold text-gray-900">{totalKmToday} km</p>
             </div>
@@ -110,7 +110,7 @@ const DriverDashboard = ({
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-2">
-              <p className="text-xs text-gray-600">Today's Earnings</p>
+              <p className="text-xs text-gray-600">Today&apos;s Earnings</p>
               <p className="text-2xl font-bold text-green-600">{formatCurrency(totalEarnedToday)}</p>
             </div>
           </CardContent>

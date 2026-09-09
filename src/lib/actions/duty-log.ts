@@ -215,7 +215,6 @@ export async function adminOverrideDutyLogAction(
   });
   if (!dutyLog) return fail("Duty log not found.");
   if (!dutyLog.endTime) return fail("Can't override a duty that hasn't been closed out yet.");
-  const endTime = dutyLog.endTime; // narrowed to Date, kept stable for the calculation below
 
   const oldValue = {
     startOdometer: dutyLog.startOdometer,

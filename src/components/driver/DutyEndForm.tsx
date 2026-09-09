@@ -5,8 +5,7 @@ import Input, { TextArea } from "@/components/shared/Input";
 import Button from "@/components/shared/Button";
 import Alert from "@/components/shared/Alert";
 import Spinner from "@/components/shared/Spinner";
-import Card, { CardContent, CardHeader, CardFooter } from "@/components/shared/Card";
-import Badge from "@/components/shared/Badge";
+import Card, { CardContent, CardHeader } from "@/components/shared/Card";
 import { useDutyLogMutation } from "@/hooks/useDutyLogMutation";
 import { formatCurrency } from "@/lib/formatter";
 import type { SubmitDutyLogInput } from "@/actions/dutyLog";
@@ -15,11 +14,10 @@ import { Camera, AlertCircle } from "lucide-react";
 export interface DutyEndFormProps {
   dutyLogId: string;
   startOdometer: number;
-  startTime: Date;
   driverName: string;
 }
 
-const DutyEndForm = ({ dutyLogId, startOdometer, startTime, driverName }: DutyEndFormProps) => {
+const DutyEndForm = ({ dutyLogId, startOdometer, driverName }: DutyEndFormProps) => {
   const { submit, isLoading, error, success, data, reset } = useDutyLogMutation();
   const [formData, setFormData] = useState({
     endTime: new Date().toISOString().slice(0, 16),
@@ -87,7 +85,7 @@ const DutyEndForm = ({ dutyLogId, startOdometer, startTime, driverName }: DutyEn
 
             <div className="rounded bg-white p-4">
               <p className="text-sm text-gray-600">Total Bill</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(data.totalDailyBill)}</p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(Number(data.totalDailyBill))}</p>
             </div>
 
             {data.status === "APPROVED" && (
@@ -98,7 +96,7 @@ const DutyEndForm = ({ dutyLogId, startOdometer, startTime, driverName }: DutyEn
 
             {data.status === "PENDING_APPROVAL" && (
               <Alert variant="warning" title="Pending Review">
-                Your duty is under admin review. We'll notify you once it's approved.
+                Your duty is under admin review. We&apos;ll notify you once it&apos;s approved.
               </Alert>
             )}
 
