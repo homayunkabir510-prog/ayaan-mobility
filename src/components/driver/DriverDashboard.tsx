@@ -1,133 +1,59 @@
-"use client";
-
-import { formatCurrency, formatDate } from "@/lib/formatter";
-import Button from "@/components/shared/Button";
+import Link from "next/link";
+import { Clock, History, MapPin, Wallet } from "lucide-react";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/formatter";
 import Card, { CardContent, CardHeader } from "@/components/shared/Card";
 import Badge from "@/components/shared/Badge";
-import { LogOut, MapPin, Zap } from "lucide-react";
 
 export interface DriverDashboardProps {
   driverName: string;
   totalKmToday: number;
-  totalEarnedToday: number;
+  approvedAmountToday: number;
+  pendingReviewCount: number;
   dutyInProgress?: {
     id: string;
     startTime: Date;
     startOdometer: number;
-    startLocation?: string;
+    startLocation?: string | null;
   };
-  onStartDuty?: () => void;
-  onEndDuty?: () => void;
 }
 
-const DriverDashboard = ({
+export default function DriverDashboard({
   driverName,
   totalKmToday,
-  totalEarnedToday,
+  approvedAmountToday,
+  pendingReviewCount,
   dutyInProgress,
-  onStartDuty,
-  onEndDuty,
-}: DriverDashboardProps) => {
-  const currentTime = new Date();
-  const dutyStartTime = dutyInProgress ? new Date(dutyInProgress.startTime) : null;
-  const dutyHours = dutyStartTime
-    ? (currentTime.getTime() - dutyStartTime.getTime()) / (1000 * 60 * 60)
-    : 0;
-
+}: DriverDashboardProps) {
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 rounded-lg">
+      <div className="rounded-2xl bg-gradient-to-r from-emerald-700 to-emerald-600 p-6 text-white">
         <p className="text-sm opacity-90">Welcome back</p>
-        <h1 className="text-3xl font-bold">{driverName}</h1>
-        <p className="text-sm opacity-90 mt-1">{formatDate(new Date())}</p>
+        <h1 className="mt-1 text-3xl font-bold">{driverName}</h1>
+        <p className="mt-2 text-sm opacity-90">{formatDate(new Date())}</p>
       </div>
 
-      {/* Active Duty */}
       {dutyInProgress ? (
-        <Card className="border-2 border-green-200 bg-green-50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-green-900">Duty In Progress</h2>
-              <Badge variant="pending">🚗 Active</Badge>
-            </div>
-          </CardHeader>
+        <Card className="border-2 border-emerald-200 bg-emerald-50">
+          <CardHeader><div className="flex items-center justify-between"><h2 className="text-lg font-bold text-emerald-950">Duty in progress</h2><Badge variant="pending">Active</Badge></div></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded bg-white/70 p-3">
-                <p className="text-xs text-gray-600">Duration</p>
-                <p className="text-lg font-bold text-gray-900">{dutyHours.toFixed(1)} hours</p>
-              </div>
-              <div className="rounded bg-white/70 p-3">
-                <p className="text-xs text-gray-600">Start Odometer</p>
-                <p className="text-lg font-bold text-gray-900">{dutyInProgress.startOdometer} km</p>
-              </div>
+              <div className="rounded bg-white/70 p-3"><p className="text-xs text-slate-600">Started</p><p className="text-sm font-bold text-slate-900">{formatDateTime(dutyInProgress.startTime)}</p></div>
+              <div className="rounded bg-white/70 p-3"><p className="text-xs text-slate-600">Start odometer</p><p className="text-lg font-bold text-slate-900">{dutyInProgress.startOdometer} km</p></div>
             </div>
-            {dutyInProgress.startLocation && (
-              <div className="flex items-center gap-2 text-gray-700">
-                <MapPin className="h-4 w-4" />
-                <p className="text-sm">{dutyInProgress.startLocation}</p>
-              </div>
-            )}
-            {onEndDuty && (
-              <Button
-                onClick={onEndDuty}
-                variant="solid"
-                className="w-full mt-4"
-              >
-                <LogOut className="h-4 w-4" />
-                End Duty
-              </Button>
-            )}
+            {dutyInProgress.startLocation && <div className="flex items-center gap-2 text-slate-700"><MapPin className="h-4 w-4" /><p className="text-sm">{dutyInProgress.startLocation}</p></div>}
+            <p className="text-sm text-slate-700">Finish the duty form below when the trip is complete.</p>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="pt-6 text-center space-y-4">
-            <p className="text-gray-600">No active duty</p>
-            {onStartDuty && (
-              <Button onClick={onStartDuty} className="w-full">
-                Start Duty
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <Card><CardContent className="pt-6 text-center"><p className="font-medium text-slate-800">No active duty</p><p className="mt-1 text-sm text-slate-600">Start a duty after confirming your assigned vehicle.</p></CardContent></Card>
       )}
 
-      {/* Today's Summary */}
       <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-gray-600">
-                <Zap className="h-4 w-4" />
-                <p className="text-xs">Today&apos;s Distance</p>
-              </div>
-              <p className="text-2xl font-bold text-gray-900">{totalKmToday} km</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-2">
-              <p className="text-xs text-gray-600">Today&apos;s Earnings</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalEarnedToday)}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="pt-6"><div className="flex items-center gap-2 text-slate-600"><MapPin className="h-4 w-4" /><p className="text-xs">Distance submitted today</p></div><p className="mt-2 text-2xl font-bold text-slate-950">{totalKmToday.toFixed(1)} km</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="flex items-center gap-2 text-slate-600"><Wallet className="h-4 w-4" /><p className="text-xs">Approved amount today</p></div><p className="mt-2 text-2xl font-bold text-emerald-700">{formatCurrency(approvedAmountToday)}</p></CardContent></Card>
       </div>
-
-      {/* Quick Links */}
-      <div className="grid grid-cols-2 gap-3">
-        <Button variant="outline" className="w-full" disabled={!dutyInProgress}>
-          View History
-        </Button>
-        <Button variant="outline" className="w-full">
-          Profile
-        </Button>
-      </div>
+      <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-medium text-amber-950">Duties awaiting review</p><span className="font-bold text-amber-900">{pendingReviewCount}</span></div>
+      <Link href="#history" className="flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"><History className="h-4 w-4" /> View duty history <Clock className="ml-auto h-4 w-4" /></Link>
     </div>
   );
-};
-
-export default DriverDashboard;
+}

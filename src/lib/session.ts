@@ -1,29 +1,30 @@
 import { SignJWT, jwtVerify } from "jose";
-import type { Role } from "@prisma/client";
+import type { Role } from "@/generated/prisma/client";
 
-// Pure, Edge-compatible session token helpers. No `next/headers` import here
-// on purpose: `src/middleware.ts` runs on the Edge runtime and can only use
-// Web APIs, while Server Actions run on Node and use `next/headers` cookies.
-// Both sides import this file to sign/verify the same token shape.
-
+// Pure Web Crypto session helpers shared by the Next.js proxy and Server Actions.
 export interface SessionPayload {
-  /** User.id */
   sub: string;
   role: Role;
-  /** Set only for CLIENT_USER; null/undefined for every other role. */
   companyId?: string | null;
   name: string;
 }
 
-const SESSION_COOKIE_NAME = "ayaan_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+export const SESSION_COOKIE_NAME = "ayaan_session";
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+
+const VALID_ROLES = new Set<Role>([
+  "SUPER_ADMIN",
+  "OPERATIONS_ADMIN",
+  "ACCOUNTS_ADMIN",
+  "CLIENT_USER",
+  "CAR_OWNER",
+  "DRIVER",
+]);
 
 function getSecretKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) {
-    throw new Error(
-      "SESSION_SECRET is missing or too short. Set a random string of at least 32 characters in .env."
-    );
+    throw new Error("SESSION_SECRET must be configured with at least 32 random characters.");
   }
   return new TextEncoder().encode(secret);
 }
@@ -39,10 +40,16 @@ export async function signSession(payload: SessionPayload): Promise<string> {
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
+    const now = Math.floor(Date.now() / 1000);
     if (
       typeof payload.sub !== "string" ||
       typeof payload.role !== "string" ||
-      typeof payload.name !== "string"
+      !VALID_ROLES.has(payload.role as Role) ||
+      typeof payload.name !== "string" ||
+      (payload.companyId !== undefined && payload.companyId !== null && typeof payload.companyId !== "string") ||
+      typeof payload.iat !== "number" || !Number.isInteger(payload.iat) || payload.iat > now + 60 ||
+      typeof payload.exp !== "number" || !Number.isInteger(payload.exp) || payload.exp <= now ||
+      payload.exp <= payload.iat || payload.exp - payload.iat > SESSION_TTL_SECONDS
     ) {
       return null;
     }
@@ -53,9 +60,6 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
       name: payload.name,
     };
   } catch {
-    // Expired, malformed, or signed with a different secret.
     return null;
   }
 }
-
-export { SESSION_COOKIE_NAME, SESSION_TTL_SECONDS };

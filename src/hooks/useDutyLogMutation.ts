@@ -17,7 +17,7 @@ import {
   type AdminOverrideDutyLogInput,
   type DutyLogResponse,
 } from "@/actions/dutyLog";
-import type { DutyLog } from "@prisma/client";
+import type { DutyLog } from "@/generated/prisma/client";
 
 // ------------------------------------------
 // Hook State & Types

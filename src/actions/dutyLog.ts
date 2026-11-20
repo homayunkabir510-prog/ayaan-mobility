@@ -11,7 +11,7 @@ import {
   type DutyLogCalcInput,
   type AgreementCalcInput,
 } from "@/lib/calculator";
-import type { DutyStatus, DutyLog } from "@prisma/client";
+import type { DutyStatus, DutyLog } from "@/generated/prisma/client";
 import { decToNumber } from "@/lib/actions/shared";
 import {
   ActionError,

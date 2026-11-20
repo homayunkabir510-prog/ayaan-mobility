@@ -1,255 +1,142 @@
 "use client";
 
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { AlertCircle, Camera } from "lucide-react";
+import { endDutyAction } from "@/lib/actions/duty-log";
+import { uploadEvidenceAction } from "@/lib/actions/upload";
 import Input, { TextArea } from "@/components/shared/Input";
 import Button from "@/components/shared/Button";
 import Alert from "@/components/shared/Alert";
 import Spinner from "@/components/shared/Spinner";
 import Card, { CardContent, CardHeader } from "@/components/shared/Card";
-import { useDutyLogMutation } from "@/hooks/useDutyLogMutation";
-import { formatCurrency } from "@/lib/formatter";
-import type { SubmitDutyLogInput } from "@/actions/dutyLog";
-import { Camera, AlertCircle } from "lucide-react";
+import { formatCurrency, formatDateTime } from "@/lib/formatter";
 
 export interface DutyEndFormProps {
   dutyLogId: string;
   startOdometer: number;
+  startTime: Date;
   driverName: string;
 }
 
-const DutyEndForm = ({ dutyLogId, startOdometer, driverName }: DutyEndFormProps) => {
-  const { submit, isLoading, error, success, data, reset } = useDutyLogMutation();
-  const [formData, setFormData] = useState({
-    endTime: new Date().toISOString().slice(0, 16),
-    endOdometer: startOdometer,
-    endOdometerImg: "",
-    endLocation: "",
-    routeNotes: "",
-    lunchClaimed: false,
-    isHoliday: false,
-    isOutsideDhakaTour: false,
-  });
-  const [photoPreview, setPhotoPreview] = useState<string>("");
+export default function DutyEndForm({ dutyLogId, startOdometer, startTime, driverName }: DutyEndFormProps) {
+  const router = useRouter();
+  const [endOdometer, setEndOdometer] = useState("");
+  const [endLocation, setEndLocation] = useState("");
+  const [routeNotes, setRouteNotes] = useState("");
+  const [lunchClaimed, setLunchClaimed] = useState(false);
+  const [isOutsideDhakaTour, setIsOutsideDhakaTour] = useState(false);
+  const [photoDataUrl, setPhotoDataUrl] = useState("");
+  const [photoKey, setPhotoKey] = useState("");
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [submitted, setSubmitted] = useState<{ totalDailyBill: number; warnings: string[] } | null>(null);
 
-  const totalKm = parseFloat(formData.endOdometer.toString()) - startOdometer;
-  const estimatedFuelBill = totalKm * 15; // Rough estimate
-
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-        // In production, upload to Cloudinary/S3
-        setFormData({ ...formData, endOdometerImg: file.name });
-      };
-      reader.readAsDataURL(file);
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024) {
+      setError("Choose a JPG, PNG, or WebP image smaller than 4 MB.");
+      return;
     }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const input: SubmitDutyLogInput = {
-      dutyLogId,
-      endTime: new Date(formData.endTime),
-      endOdometer: parseFloat(formData.endOdometer.toString()),
-      endOdometerImg: formData.endOdometerImg,
-      endLocation: formData.endLocation || undefined,
-      routeNotes: formData.routeNotes || undefined,
-      lunchClaimed: formData.lunchClaimed,
-      isHoliday: formData.isHoliday,
-      isOutsideDhakaTour: formData.isOutsideDhakaTour,
+    const reader = new FileReader();
+    reader.onerror = () => setError("Could not read this image. Choose it again.");
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? "");
+      setPhotoDataUrl(dataUrl);
+      setPhotoPreview(dataUrl);
+      setPhotoKey("");
+      setError(null);
     };
-    await submit(input);
+    reader.readAsDataURL(file);
   };
 
-  if (success && data) {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    const reading = Number(endOdometer);
+    if (!Number.isFinite(reading) || reading < 0 || reading > 999_999) return setError("Enter an odometer reading from 0 to 999,999 km.");
+    if (!photoDataUrl && !photoKey) return setError("Take a clear ending odometer photo.");
+    if (routeNotes.trim().length === 0) return setError("Please note where the car traveled.");
+
+    setIsLoading(true);
+    let storedPhotoKey = photoKey;
+    if (!storedPhotoKey) {
+      const upload = await uploadEvidenceAction({ dataUrl: photoDataUrl, kind: "end-odometer", dutyLogId });
+      if (!upload.success) {
+        setIsLoading(false);
+        setError(upload.error);
+        return;
+      }
+      storedPhotoKey = upload.data.objectKey;
+      setPhotoKey(storedPhotoKey);
+    }
+
+    const response = await endDutyAction({
+      dutyLogId,
+      endOdometer: reading,
+      endOdometerImg: storedPhotoKey,
+      endLocation: endLocation || undefined,
+      routeNotes: routeNotes.trim(),
+      lunchClaimed,
+      isOutsideDhakaTour,
+    });
+    setIsLoading(false);
+    if (!response.success) {
+      setError(response.error);
+      return;
+    }
+    setSubmitted({ totalDailyBill: response.data.totalDailyBill, warnings: response.data.warnings });
+  };
+
+  if (submitted) {
     return (
-      <Card className="border-2 border-green-200 bg-green-50">
-        <CardContent className="pt-6">
-          <div className="space-y-4 text-center">
-            <div className="text-4xl font-bold text-green-600">✓</div>
-            <h2 className="text-2xl font-bold text-gray-900">Duty Submitted Successfully!</h2>
-            <p className="text-gray-600">Thank you, {driverName}</p>
-
-            <div className="grid grid-cols-2 gap-4 pt-4">
-              <div className="rounded bg-white p-3">
-                <p className="text-xs text-gray-500">Distance</p>
-                <p className="text-lg font-bold text-gray-900">{data.totalKm} km</p>
-              </div>
-              <div className="rounded bg-white p-3">
-                <p className="text-xs text-gray-500">Duration</p>
-                <p className="text-lg font-bold text-gray-900">{data.dutyHours.toFixed(1)}h</p>
-              </div>
-            </div>
-
-            <div className="rounded bg-white p-4">
-              <p className="text-sm text-gray-600">Total Bill</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(Number(data.totalDailyBill))}</p>
-            </div>
-
-            {data.status === "APPROVED" && (
-              <Alert variant="success" title="Auto-Approved">
-                Your duty has been automatically approved! The amount will be credited within 24 hours.
-              </Alert>
-            )}
-
-            {data.status === "PENDING_APPROVAL" && (
-              <Alert variant="warning" title="Pending Review">
-                Your duty is under admin review. We&apos;ll notify you once it&apos;s approved.
-              </Alert>
-            )}
-
-            <Button onClick={() => reset()} className="w-full mt-4">
-              Submit Another Duty
-            </Button>
-          </div>
+      <Card className="border-2 border-emerald-200 bg-emerald-50">
+        <CardContent className="space-y-4 pt-6 text-center">
+          <div className="text-4xl font-bold text-emerald-700" aria-hidden="true">✓</div>
+          <h2 className="text-2xl font-bold text-slate-900">Duty submitted</h2>
+          <p className="text-slate-600">Thank you, {driverName}. The record is awaiting authorized review.</p>
+          <div className="rounded-xl bg-white p-4"><p className="text-sm text-slate-600">Submitted amount</p><p className="text-2xl font-bold text-emerald-700">{formatCurrency(submitted.totalDailyBill)}</p></div>
+          {submitted.warnings.length > 0 && <Alert variant="warning" title="Review requested"><ul className="list-disc space-y-1 pl-5 text-left">{submitted.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></Alert>}
+          <Button type="button" className="w-full" onClick={() => { router.replace("/go"); router.refresh(); }}>Return to my duties</Button>
         </CardContent>
       </Card>
     );
   }
 
+  const totalKm = Number(endOdometer) - startOdometer;
   return (
     <Card>
-      <CardHeader>
-        <h2 className="text-xl font-bold">End Duty</h2>
-        <p className="text-sm text-gray-600 mt-1">Driver: {driverName}</p>
-      </CardHeader>
-
+      <CardHeader><h2 className="text-xl font-bold">End duty</h2><p className="mt-1 text-sm text-slate-600">Driver: {driverName} · Started {formatDateTime(startTime)}</p></CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && <Alert variant="error" title="Error">{error}</Alert>}
-
-          {/* End Time */}
-          <Input
-            label="End Time *"
-            type="datetime-local"
-            value={formData.endTime}
-            onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-            required
-          />
-
-          {/* Odometer */}
-          <Input
-            label="End Odometer (km) *"
-            type="number"
-            step="0.1"
-            value={formData.endOdometer}
-            onChange={(e) => setFormData({ ...formData, endOdometer: parseFloat(e.target.value) })}
-            required
-          />
-
-          {/* Distance Summary */}
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="h-5 w-5 text-blue-600" />
-              <p className="font-semibold text-blue-900">Distance Summary</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-blue-700">Start: {startOdometer} km</p>
-                <p className="text-blue-700">End: {formData.endOdometer} km</p>
-              </div>
-              <div>
-                <p className="font-bold text-blue-900 text-lg">{totalKm} km</p>
-                <p className="text-xs text-blue-600">Est. fuel: {formatCurrency(estimatedFuelBill)}</p>
-              </div>
-            </div>
+          {error && <Alert variant="error" title="Could not submit duty">{error}</Alert>}
+          <Input label="Ending odometer (km)" type="number" inputMode="decimal" min={0} max={999999} step="0.1" value={endOdometer} onChange={(event) => setEndOdometer(event.target.value)} required />
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+            <div className="mb-2 flex items-center gap-2"><AlertCircle className="h-5 w-5 text-sky-700" /><p className="font-semibold text-sky-900">Distance summary</p></div>
+            <div className="grid grid-cols-2 gap-3 text-sm"><p className="text-sky-800">Start: {startOdometer} km</p><p className="text-sky-800">End: {endOdometer || "—"} km</p></div>
+            <p className={`mt-2 text-lg font-bold ${totalKm < 0 ? "text-rose-700" : "text-sky-900"}`}>{Number.isFinite(totalKm) ? totalKm.toFixed(1) : "—"} km</p>
+            {totalKm < 0 && <p className="text-sm text-rose-700">This rollback will be flagged for review.</p>}
           </div>
-
-          {/* Odometer Photo */}
           <div>
-            <label className="text-sm font-medium text-gray-900 block mb-2">Odometer Photo *</label>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handlePhotoChange}
-              required
-              className="hidden"
-              id="photo-input"
-            />
-            <label
-              htmlFor="photo-input"
-              className="flex items-center justify-center w-full p-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-            >
-              {photoPreview ? (
-                <div className="text-center">
-                  <img src={photoPreview} alt="Preview" className="max-h-32 mx-auto rounded" />
-                  <p className="text-xs text-gray-600 mt-2">Click to change photo</p>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <Camera className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-gray-900">Take Photo</p>
-                  <p className="text-xs text-gray-500">of your odometer reading</p>
-                </div>
-              )}
+            <label htmlFor="end-photo" className="mb-2 block text-sm font-medium text-slate-900">Ending odometer photo</label>
+            <input id="end-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handlePhotoChange} className="sr-only" required />
+            <label htmlFor="end-photo" className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-300 p-5 hover:bg-slate-50 focus-within:ring-2 focus-within:ring-emerald-600">
+              {photoPreview ? <Image src={photoPreview} alt="Ending odometer preview" width={640} height={360} unoptimized className="max-h-36 w-auto rounded object-contain" /> : <span className="flex items-center gap-2 text-sm text-slate-600"><Camera className="h-5 w-5" /> Take photo</span>}
             </label>
           </div>
-
-          {/* Location */}
-          <Input
-            label="End Location"
-            type="text"
-            placeholder="e.g., Gulshan Office"
-            value={formData.endLocation}
-            onChange={(e) => setFormData({ ...formData, endLocation: e.target.value })}
-          />
-
-          {/* Route Notes */}
-          <TextArea
-            label="Route Notes"
-            placeholder="Describe your route, number of stops, traffic conditions, etc."
-            value={formData.routeNotes}
-            onChange={(e) => setFormData({ ...formData, routeNotes: e.target.value })}
-            rows={3}
-          />
-
-          {/* Checkboxes */}
-          <div className="space-y-2 border-t border-gray-200 pt-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.lunchClaimed}
-                onChange={(e) => setFormData({ ...formData, lunchClaimed: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">Claim lunch allowance (৳ 200)</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isHoliday}
-                onChange={(e) => setFormData({ ...formData, isHoliday: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">This is a holiday/Friday</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isOutsideDhakaTour}
-                onChange={(e) => setFormData({ ...formData, isOutsideDhakaTour: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">Trip outside Dhaka (tour allowance ৳ 1200)</span>
-            </label>
+          <Input label="End location (optional)" type="text" maxLength={160} placeholder="e.g. Gulshan office" value={endLocation} onChange={(event) => setEndLocation(event.target.value)} />
+          <TextArea label="Route notes" maxLength={1500} rows={3} placeholder="Describe the route and stops." value={routeNotes} onChange={(event) => setRouteNotes(event.target.value)} required />
+          <div className="space-y-3 border-t border-slate-200 pt-4">
+            <label className="flex items-start gap-3 text-sm text-slate-700"><input type="checkbox" checked={lunchClaimed} onChange={(event) => setLunchClaimed(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300" /><span>Claim lunch allowance. It will be reviewed before approval.</span></label>
+            <label className="flex items-start gap-3 text-sm text-slate-700"><input type="checkbox" checked={isOutsideDhakaTour} onChange={(event) => setIsOutsideDhakaTour(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300" /><span>Claim an outside-Dhaka tour allowance. It will be reviewed before approval.</span></label>
+            <p className="text-xs text-slate-500">Friday overtime is derived from Dhaka time. Government holidays are not driver-selectable; an admin-maintained holiday calendar is still required.</p>
           </div>
-
-          <Button type="submit" disabled={isLoading} className="w-full mt-4">
-            {isLoading ? (
-              <>
-                <Spinner size="sm" /> Submitting...
-              </>
-            ) : (
-              "Submit Duty"
-            )}
-          </Button>
+          <Button type="submit" disabled={isLoading} className="w-full">{isLoading ? <><Spinner size="sm" /> Submitting…</> : "Submit duty for review"}</Button>
         </form>
       </CardContent>
     </Card>
   );
-};
-
-export default DutyEndForm;
+}
