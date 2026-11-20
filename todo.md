@@ -10,6 +10,7 @@
 - [x] Verify from a clean lockfile install: lint, TypeScript, 22 unit tests, 4 local PostgreSQL login-throttle integration tests, environment validation, Prisma validation, both migrations applied/status up-to-date, production build, HTTP smoke checks, dependency audit, and `git diff --check`.
 - [x] Update README and add Bengali staging checklist/product-modernization roadmap.
 - [x] Complete independent read-only security review; no blocking findings. Review did not substitute for staging acceptance.
+- [x] Commit and push the reviewed feature branch; open draft PR #1 for review. Do not merge or deploy before staging evidence and explicit release authorization.
 
 ## Remaining before staging / production
 - [ ] Add dedicated Server Action denial tests for wrong-role, missing-profile and cross-tenant evidence IDs; the current PostgreSQL integration suite covers the login limiter only.
@@ -17,4 +18,3 @@
 - [ ] Record product decisions for holiday calendar, assignment windows/reassignment, claims, client approvals, invoice cycle, commission, payout threshold/method, and payment evidence.
 - [ ] Implement and test remaining production workflows: full account onboarding, MFA/recovery, agreement versioning, complete invoice/payment, owner settlement, operational notifications and account lifecycle.
 - [ ] Complete staging role-by-role acceptance, load/monitoring verification and a rollback/restore drill before any production deployment.
-- [ ] Commit and push the reviewed feature branch and open a review PR; do not merge or deploy without staging evidence and explicit release authorization.
