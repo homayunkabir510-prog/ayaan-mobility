@@ -1,13 +1,8 @@
 import "server-only";
-import { Prisma, type Role } from "@prisma/client";
+import { Prisma, type Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, hasRole, type AuthUser } from "@/lib/auth";
 
-// ------------------------------------------
-// Result type every Server Action returns.
-// Server Actions can't throw across the client/server boundary and be
-// caught cleanly by the caller, so every action returns this instead.
-// ------------------------------------------
 export type ActionResult<T> = { success: true; data: T } | { success: false; error: string };
 
 export function ok<T>(data: T): ActionResult<T> {
@@ -18,11 +13,6 @@ export function fail<T = never>(error: string): ActionResult<T> {
   return { success: false, error };
 }
 
-/**
- * Loads the current user and checks their role before an action proceeds.
- * Every mutating Server Action should start with this instead of trusting
- * a role/id passed in from the client.
- */
 export async function requireRoleForAction(
   allowedRoles: Role[]
 ): Promise<{ user: AuthUser } | { error: string }> {
@@ -32,21 +22,31 @@ export async function requireRoleForAction(
   return { user };
 }
 
-/** Prisma Decimal fields deserialize as Decimal objects, not `number`; calculator.ts is Decimal-agnostic on purpose, so convert at this boundary. */
 export function decToNumber(value: Prisma.Decimal | number | null | undefined): number {
   if (value === null || value === undefined) return 0;
   return typeof value === "number" ? value : value.toNumber();
 }
 
-export async function logAudit(input: {
-  adminId: string;
-  action: string;
-  entityName: string;
-  entityId: string;
-  oldValue?: unknown;
-  newValue?: unknown;
-}): Promise<void> {
-  await prisma.auditLog.create({
+export function roundMoney(value: number | Prisma.Decimal): Prisma.Decimal {
+  const decimal = value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value.toString());
+  return decimal.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+}
+
+type AuditClient = Pick<Prisma.TransactionClient, "auditLog">;
+
+/** Audit creation is awaited and can participate in the caller's transaction. */
+export async function logAudit(
+  input: {
+    adminId: string;
+    action: string;
+    entityName: string;
+    entityId: string;
+    oldValue?: unknown;
+    newValue?: unknown;
+  },
+  client: AuditClient = prisma
+): Promise<void> {
+  await client.auditLog.create({
     data: {
       adminId: input.adminId,
       action: input.action,
@@ -58,40 +58,50 @@ export async function logAudit(input: {
   });
 }
 
-// ------------------------------------------
-// Fix for flagged issue #6: holiday/Friday detection must use Asia/Dhaka,
-// not server-local or UTC time, or a duty that starts at 11:30 PM Dhaka
-// time on a Thursday can get misclassified depending on where the server
-// process happens to be running.
-// ------------------------------------------
+/** Retry PostgreSQL serialization conflicts; the transaction body must be safe to rerun. */
+export async function withSerializableTransaction<T>(
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  retries = 2
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prisma.$transaction(callback, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      const retryable =
+        typeof error === "object" && error !== null && "code" in error &&
+        (error as { code?: unknown }).code === "P2034";
+      if (!retryable || attempt >= retries) throw error;
+    }
+  }
+}
+
 const DHAKA_TIME_ZONE = "Asia/Dhaka";
 
 export function isDhakaFriday(date: Date): boolean {
-  const weekday = new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone: DHAKA_TIME_ZONE,
     weekday: "short",
-  }).format(date);
-  return weekday === "Fri";
+  }).format(date) === "Fri";
 }
 
-/**
- * Government holidays (Eid, national days, etc.) don't follow a formula, so
- * this can't be computed -- it takes an explicit admin-maintained list of
- * "YYYY-MM-DD" (Dhaka calendar date) strings. Wire this to a real Holiday
- * table when the admin UI for managing the calendar is built; until then
- * pass `[]` and only Friday auto-detection applies.
- */
-export function isDhakaHoliday(date: Date, holidayDates: string[] = []): boolean {
-  const dhakaDateString = new Intl.DateTimeFormat("en-CA", {
+export function dhakaCalendarDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: DHAKA_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(date); // en-CA gives YYYY-MM-DD
-  return holidayDates.includes(dhakaDateString);
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
-/** The Agreement in effect for a given vehicle at a given moment (defaults to now). */
+/** Government holidays are deliberately server-managed; no driver-supplied holiday flag is trusted. */
+export function isDhakaHoliday(date: Date, holidayDates: string[] = []): boolean {
+  return holidayDates.includes(dhakaCalendarDate(date));
+}
+
 export async function resolveActiveAgreement(vehicleId: string, at: Date = new Date()) {
   return prisma.agreement.findFirst({
     where: {

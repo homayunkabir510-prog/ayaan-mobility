@@ -1,5 +1,5 @@
 // Re-exports Prisma's generated types so app code can import domain types
-// from "@/types" instead of reaching into "@prisma/client" everywhere.
+// from "@/types" instead of reaching into "@/generated/prisma/client" everywhere.
 
 export type {
   Role,
@@ -23,4 +23,4 @@ export type {
   OwnerPayout,
   EmergencyAlert,
   AuditLog,
-} from "@prisma/client";
+} from "@/generated/prisma/client";

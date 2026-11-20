@@ -18,11 +18,11 @@
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 // ------------------------------------------
@@ -449,4 +449,14 @@ model AuditLog {
   newValue    String?  // JSON string
 
   createdAt   DateTime @default(now())
+}
+
+// Stores HMACs of login identifiers, never raw phone numbers or IP addresses.
+model LoginRateLimit {
+  keyHash        String   @id @db.Char(64)
+  windowStartedAt DateTime
+  attemptCount   Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@index([updatedAt])
 }

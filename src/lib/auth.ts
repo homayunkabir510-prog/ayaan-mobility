@@ -1,8 +1,10 @@
 import "server-only";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
-import type { Role } from "@prisma/client";
+import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { clearLoginAttempts, consumeLoginAttempt } from "@/lib/login-rate-limit";
+import { isBcryptPasswordLengthValid } from "@/lib/password-policy";
 import {
   signSession,
   verifySession,
@@ -12,6 +14,8 @@ import {
 } from "@/lib/session";
 
 const BCRYPT_ROUNDS = 12;
+// A non-user hash keeps unknown-phone failures close to the cost of a real password check.
+const DUMMY_PASSWORD_HASH = "$2a$12$Dj7tHIVgyYvDO0WShK66x.7U49A7qljCPGvY7xQ9/Bgfy6JKzwpyC";
 
 export interface AuthUser {
   id: string;
@@ -25,6 +29,9 @@ export interface AuthUser {
 
 /** Hash a plain-text password for storage in User.password. Used when creating/resetting accounts. */
 export function hashPassword(plainPassword: string): Promise<string> {
+  if (!isBcryptPasswordLengthValid(plainPassword)) {
+    throw new Error("Password must not exceed 72 UTF-8 bytes.");
+  }
   return bcrypt.hash(plainPassword, BCRYPT_ROUNDS);
 }
 
@@ -35,15 +42,17 @@ export function hashPassword(plainPassword: string): Promise<string> {
  * phone numbers are registered.
  */
 export async function login(phone: string, plainPassword: string): Promise<AuthUser | null> {
+  if (!isBcryptPasswordLengthValid(plainPassword)) return null;
+  if (!(await consumeLoginAttempt(phone))) return null;
+
   const user = await prisma.user.findUnique({
     where: { phone },
     include: { driverProfile: true, carOwnerProfile: true },
   });
 
-  if (!user || !user.isActive) return null;
-
-  const passwordMatches = await bcrypt.compare(plainPassword, user.password);
-  if (!passwordMatches) return null;
+  const passwordMatches = await bcrypt.compare(plainPassword, user?.password ?? DUMMY_PASSWORD_HASH);
+  if (!user || !user.isActive || !passwordMatches) return null;
+  await clearLoginAttempts(phone);
 
   const payload: SessionPayload = {
     sub: user.id,
