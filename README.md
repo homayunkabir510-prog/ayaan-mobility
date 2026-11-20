@@ -77,7 +77,7 @@ npm audit --audit-level=high
 git diff --check
 ```
 
-The suite currently includes 22 unit tests and 4 PostgreSQL-backed login-throttle integration tests. CI applies migrations to an ephemeral PostgreSQL service, builds the production bundle, and smoke-tests `/api/health`, `/api/ready`, login rendering, and the unauthenticated protected-route redirect. A passing local build does **not** prove that production database credentials, Supabase storage permissions, or the live schema are correct.
+The suite includes 22 unit tests and 20 PostgreSQL-backed integration tests: 4 login-throttle cases and 16 authorization-denial cases. The new cases cover every current protected action family: cross-driver duty start/end and claim submission; wrong-role denials for global duty correction/approval/rejection and claim review; all three evidence-upload variants; and cross-tenant signed-link denials for client, driver, and owner users. The action checks use real rows and predicates in disposable PostgreSQL; session identity, Next.js cache invalidation, and external Supabase Storage are mocked. All five legacy exports in `src/actions/dutyLog.ts` are tested to fail closed, but authenticated ownership tests are impossible until `src/actions/utils.ts:getAuthUser()` stops returning `null`. These tests do not verify real session extraction or Supabase policies. CI applies migrations to an ephemeral PostgreSQL service, builds the production bundle, and smoke-tests `/api/health`, `/api/ready`, login rendering, and the unauthenticated protected-route redirect. A passing local build does **not** prove that production database credentials, Supabase storage permissions, or the live schema are correct.
 
 ## Security and production readiness
 

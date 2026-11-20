@@ -4,7 +4,9 @@
 
 প্রকল্পটি production-check পর্যায়ে নেওয়ার জন্য branch-এ প্রস্তুত; এটি production launch নয়। Prisma ORM 7-এ migration, database-backed login throttling, server-side access-scope tightening, health/readiness endpoint এবং CI smoke gate যোগ হয়েছে। পরীক্ষা করা হয়েছে কেবল disposable local PostgreSQL-এ—কোনো live database, Supabase Storage বা hosting account-এ নয়।
 
-বর্তমান যাচাই: lint ও TypeScript পাস; ২২টি unit test এবং PostgreSQL-এ ৪টি integration test পাস; Prisma schema valid, দুই migration deploy ও status up-to-date; production build এবং health, readiness, login, protected-route smoke checks পাস; `npm audit --audit-level=high`-এ ০ vulnerability।
+বর্তমান যাচাই: lint ও TypeScript পাস; ২২টি unit test এবং PostgreSQL-এ ২০টি integration test পাস (৪টি login-throttle, ১৬টি Server Action authorization denial); Prisma schema valid, দুই migration deploy ও status up-to-date; production build এবং health, readiness, login, protected-route smoke checks পাস; `npm audit --audit-level=high`-এ ০ vulnerability।
+
+নতুন authorization suite-এ বর্তমান protected action-গুলোর duty, expense-claim এবং evidence পরিবার পরীক্ষা করা হয়েছে: অন্য driver-এর vehicle/duty-তে duty শুরু/শেষ ও claim submission প্রত্যাখ্যান, global duty correction/approval/rejection এবং claim review-এ ভুল role প্রত্যাখ্যান, upload-এর তিন variant-এ foreign record denial, এবং client/driver/owner-এর cross-tenant signed-link denial। প্রতিটি test disposable PostgreSQL-এর আসল fixture ও query ব্যবহার করে; session identity, Next.js cache invalidation এবং বাইরের Supabase Storage adapter mock করা। `src/actions/dutyLog.ts`-এর পাঁচটি legacy export fail-closed থাকে—এগুলো authenticated cross-tenant ভাবে পরীক্ষা করা সম্ভব নয়, কারণ `src/actions/utils.ts:getAuthUser()` এখনো সবসময় `null` ফেরায়।
 
 ## Staging-এ যাওয়ার আগে
 
@@ -39,7 +41,7 @@
 
 ## বর্তমান সীমা
 
-এই milestone-এ live credential না থাকায় production database migration, Supabase bucket test, hosting deployment, DNS/TLS, backup restore বা বাস্তব user data যাচাই করা হয়নি। Full onboarding, invoice lifecycle, payment/payout execution, MFA ও account recovery অসম্পূর্ণ—এগুলো roadmap, সম্পন্ন feature নয়।
+এই milestone-এ live credential না থাকায় production database migration, Supabase bucket test, hosting deployment, DNS/TLS, backup restore বা বাস্তব user data যাচাই করা হয়নি। নতুন denial tests বাস্তব session extraction, missing-profile denial বা authorized success flow যাচাই করে না; এগুলো আলাদা test gap। Full onboarding, invoice lifecycle, payment/payout execution, MFA ও account recovery অসম্পূর্ণ—এগুলো roadmap, সম্পন্ন feature নয়।
 
 ## যাচাই ও নির্ভরযোগ্য তথ্য
 
